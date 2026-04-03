@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passer By</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+
+        .card-enter { animation: slideIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        .card-exit-left { animation: slideOutLeft 0.5s ease-in forwards; }
+        .card-exit-right { animation: slideOutRight 0.5s ease-in forwards; }
+        .stamp-anim { animation: stampDown 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .jackpot-anim { animation: jackpotFly 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        @keyframes slideIn { from { transform: translateY(100px) scale(0.9); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+        @keyframes slideOutLeft { from { transform: translateX(0) rotate(-15deg); opacity: 1; } to { transform: translateX(-150%) rotate(-25deg); opacity: 0; } }
+        @keyframes slideOutRight { from { transform: translateX(0) rotate(15deg); opacity: 1; } to { transform: translateX(150%) rotate(25deg); opacity: 0; } }
+        @keyframes stampDown { 0% { transform: scale(3) rotate(-10deg); opacity: 0; } 50% { transform: scale(0.9) rotate(-10deg); opacity: 1; } 100% { transform: scale(1) rotate(-10deg); opacity: 1; } }
+        @keyframes jackpotFly { 0% { transform: translateY(0) scale(0.5); opacity: 0; } 20% { transform: translateY(-30px) scale(1.2); opacity: 1; } 80% { transform: translateY(-40px) scale(1.1); opacity: 1; } 100% { transform: translateY(-60px) scale(1); opacity: 0; } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+        @keyframes snow { 0% { transform: translateY(-10vh); } 100% { transform: translateY(110vh); } }
+        @keyframes siren { 0%, 100% { opacity: 0; } 50% { opacity: 0.15; } }
+        
+        /* Dynamic scanner animation */
+        @keyframes scan { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-300 font-mono overflow-x-hidden">
+    <div id="app-root"></div>
+
+    <script>
+        // --- Generators & Data ---
+        const COUNTRIES = ['Novistrana', 'Oslia', 'Republia', 'Antegria', 'United Federation'];
+        const FIRST_NAMES = ['Alek', 'Boris', 'Elena', 'Katarina', 'Dmitri', 'Ivan', 'Natalia', 'Viktor', 'Anya', 'Sergei', 'Yuri', 'Mikhail', 'Svetlana', 'Igor', 'Tatiana', 'Lev', 'Oleg', 'Raisa'];
+        const LAST_NAMES = ['Ivanov', 'Kuznetsov', 'Popov', 'Sokolov', 'Volkov', 'Morozov', 'Novikov', 'Fedorov', 'Smirnov', 'Lebedev', 'Kozlov', 'Orlov', 'Petrov', 'Semenov'];
+        const REASONS = [
+          "I am visiting my sick mother. Please, I don't have much time.", "Just passing through for business. I deal in textiles.", "I'm fleeing the conflict in the northern provinces.",
+          "Tourism. I hear your country is beautiful this time of year.", "I have a new job waiting for me in the capital.", "I am seeking asylum. They will kill me if I go back.",
+          "Returning home after studying abroad for five years.", "I'm here for a specialized medical procedure.", "Attending my brother's wedding. I have the invitation here somewhere...",
+          "I lost a bet and have to walk across the border in these shoes.", "Visiting my pen pal! We've been writing to each other for 10 years.", "I'm a journalist covering the border situation. Don't mind me.",
+          "Just trying to buy some rare spices from your local markets.", "My dog ran across the border yesterday. I'm just going to get him!", "Transporting some antique clocks for a private collector.",
+          "I'm a musician on tour. The rest of the band is already across.", "Looking for a better life. Any life, really. It's tough out there.", "I heard the soil here is perfect for growing winter cabbage."
+        ];
+        const ITEMS = ['Clothes', 'Books', 'Suspicious Package', 'Family Photos', 'Tools', 'Large amounts of cash', 'Medical Supplies', 'Canned Food', 'Briefcase'];
+        const CONTRABAND = ['Unregistered Weapon', 'Forged Documents', 'Smuggled Gold', 'Illegal Transmitters', 'Banned Literature', 'Counterfeit Currency'];
+
+        // --- Sound Engine (Web Audio API) ---
+        const sfx = {
+            ctx: null,
+            init() {
+                if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            },
+            play(type) {
+                try {
+                    this.init();
+                    const t = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    if (type === 'click') {
+                        osc.type = 'sine'; osc.frequency.setValueAtTime(800, t);
+                        gain.gain.setValueAtTime(0.05, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+                        osc.start(t); osc.stop(t + 0.05);
+                    } else if (type === 'stamp') {
+                        osc.type = 'square'; osc.frequency.setValueAtTime(100, t); osc.frequency.exponentialRampToValueAtTime(0.01, t + 0.1);
+                        gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                        osc.start(t); osc.stop(t + 0.1);
+                    } else if (type === 'approve') {
+                        osc.type = 'sine'; osc.frequency.setValueAtTime(400, t); osc.frequency.setValueAtTime(600, t + 0.1);
+                        gain.gain.setValueAtTime(0.1, t); gain.gain.linearRampToValueAtTime(0, t + 0.3);
+                        osc.start(t); osc.stop(t + 0.3);
+                    } else if (type === 'deny') {
+                        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, t); osc.frequency.linearRampToValueAtTime(100, t + 0.3);
+                        gain.gain.setValueAtTime(0.1, t); gain.gain.linearRampToValueAtTime(0, t + 0.3);
+                        osc.start(t); osc.stop(t + 0.3);
+                    } else if (type === 'bribe') {
+                        osc.type = 'sine'; osc.frequency.setValueAtTime(1200, t); osc.frequency.setValueAtTime(1600, t + 0.1);
+                        gain.gain.setValueAtTime(0.1, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+                        osc.start(t); osc.stop(t + 0.3);
+                    } else if (type === 'scan') {
+                        osc.type = 'triangle'; osc.frequency.setValueAtTime(200, t); osc.frequency.linearRampToValueAtTime(400, t + 1.0);
+                        gain.gain.setValueAtTime(0.05, t); gain.gain.linearRampToValueAtTime(0, t + 1.0);
+                        osc.start(t); osc.stop(t + 1.0);
+                    } else if (type === 'alert') {
+                        osc.type = 'square'; osc.frequency.setValueAtTime(300, t); osc.frequency.setValueAtTime(400, t + 0.2); osc.frequency.setValueAtTime(300, t + 0.4);
+                        gain.gain.setValueAtTime(0.05, t); gain.gain.linearRampToValueAtTime(0, t + 0.6);
+                        osc.start(t); osc.stop(t + 0.6);
+                    } else if (type === 'jackpot') {
+                        osc.type = 'square'; osc.frequency.setValueAtTime(400, t); osc.frequency.setValueAtTime(500, t + 0.1); osc.frequency.setValueAtTime(600, t + 0.2); osc.frequency.setValueAtTime(800, t + 0.3);
+                        gain.gain.setValueAtTime(0.1, t); gain.gain.linearRampToValueAtTime(0, t + 0.6);
+                        osc.start(t); osc.stop(t + 0.6);
+                    } else if (type === 'gameover') {
+                        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, t); osc.frequency.exponentialRampToValueAtTime(10, t + 1.5);
+                        gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0, t + 1.5);
+                        osc.start(t); osc.stop(t + 1.5);
+                    } else if (type === 'tick') {
+                        osc.type = 'sine'; osc.frequency.setValueAtTime(1000, t);
+                        gain.gain.setValueAtTime(0.02, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+                        osc.start(t); osc.stop(t + 0.05);
+                    } else if (type === 'explosion') {
+                        osc.type = 'square'; osc.frequency.setValueAtTime(100, t); osc.frequency.exponentialRampToValueAtTime(0.01, t + 1.0);
+                        gain.gain.setValueAtTime(0.5, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 1.0);
+                        osc.start(t); osc.stop(t + 1.0);
+                    }
+                } catch (e) {}
+            }
+        };
+        const playClick = () => sfx.play('click');
+
+        // --- Game State ---
+        let state = {
+            gameState: 'intro', // intro, day_start, playing, loan_offer, day_end, game_over
+            day: 1,
+            quota: 0,
+            familyComfort: 80,
+            rankProgress: 0,
+            rankLevel: 1,
+            streak: 0,
+            debt: 0,
+            gameOverReason: "",
+            directive: null,
+            dailyEvent: null,
+            currentNPC: null,
+            wantedCriminal: null,
+            upgrades: { scannerLvl: 0, syndicateLvl: 0, heatLvl: 0, coffeeLvl: 0 },
+            checkpoint: null,
+            cardState: 'story',
+            scanStatus: 'idle',
+            animating: 'in',
+            stamp: null,
+            lootPopup: null,
+            npcPatience: 100,
+            npcSpeech: "",
+            shake: false,
+            tickSound: false
+        };
+
+        // --- Timers ---
+        let patienceInterval;
+        let bombInterval;
+        let speechTimeout;
+
+        // --- Derived Values ---
+        const getTargetQuota = () => 4 + Math.floor(state.day * 1.5);
+        const getBaseDailyCost = () => 10 + Math.floor(state.day * 4.5);
+        const getCurrentBribeValue = () => state.currentNPC?.bribe > 0 ? Math.floor(state.currentNPC.bribe * (1 + (state.upgrades.syndicateLvl * 0.2))) : 0;
+        const getPatienceColor = () => state.npcPatience > 60 ? 'bg-green-500' : state.npcPatience > 30 ? 'bg-yellow-500' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]';
+        
+        // --- Generators ---
+        const generateNewWanted = (currentDay) => {
+            const name = `${FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)]}`;
+            const country = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
+            return { name, country, bountyComfort: 20 + (currentDay * 5), bountyRank: 30 + (currentDay * 2) };
+        };
+
+        const generatePasserby = (currentDay, currentWanted, event) => {
+            if (currentWanted && Math.random() < 0.1) {
+                return { id: Math.random().toString(36).substr(2, 9), name: currentWanted.name, country: currentWanted.country, reason: "I am definitely a normal citizen doing normal things.", items: ['Suspicious Package'], hiddenItem: 'Unregistered Weapon', passportExp: `1988`, bribe: 40 + (currentDay * 5), isWanted: true, isVIP: false, isBomber: false };
+            }
+            if (event?.id === 'bomb' && Math.random() < 0.15) {
+                return { id: Math.random().toString(36).substr(2, 9), name: "UNKNOWN", country: "Oslia", reason: "Glory to the cause.", items: ['Briefcase'], hiddenItem: 'Explosive Device', passportExp: `1988`, bribe: 0, isWanted: false, isVIP: false, isBomber: true };
+            }
+            const isVIP = Math.random() < 0.05;
+            const isBribing = isVIP ? true : (event?.id === 'syndicate' ? Math.random() > 0.4 : Math.random() > 0.7);
+            const isExpired = Math.random() > 0.8;
+            const hasContraband = isVIP ? true : Math.random() > 0.65;
+            const country = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
+            const name = `${FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)]}`;
+            let baseBribe = Math.floor(Math.random() * 20) + 10;
+            if (event?.id === 'syndicate') baseBribe *= 2;
+            if (isVIP) baseBribe = Math.floor(Math.random() * 80) + 80 + (currentDay * 2); 
+            return {
+                id: Math.random().toString(36).substr(2, 9), name, country,
+                reason: isVIP ? "I am a very important person. Open the gate, take the money, and look away." : REASONS[Math.floor(Math.random() * REASONS.length)],
+                items: [ITEMS[Math.floor(Math.random() * ITEMS.length)]],
+                hiddenItem: hasContraband ? (isVIP ? 'Smuggled Gold' : CONTRABAND[Math.floor(Math.random() * CONTRABAND.length)]) : null,
+                passportExp: isExpired ? `198${Math.floor(Math.random() * 4)}` : `198${Math.floor(Math.random() * 5 + 6)}`,
+                bribe: isBribing ? baseBribe : 0, isWanted: false, isVIP, isBomber: false
+            };
+        };
+
+        const generateDailyEvent = () => {
+            const roll = Math.random();
+            if (roll < 0.15) return { id: 'bomb', name: "TERRORIST THREAT", desc: "A bomber is approaching the checkpoint. DO NOT LET THEM IN.", color: "text-orange-500" };
+            if (roll < 0.30) return { id: 'inspection', name: "SURPRISE INSPECTION", desc: "Command is watching closely. All Rank penalties are DOUBLED today.", color: "text-red-500" };
+            if (roll < 0.45) return { id: 'freeze', name: "BITTER COLD", desc: "A terrible storm hits. Family living expenses are DOUBLED tonight.", color: "text-cyan-400" };
+            if (roll < 0.60) return { id: 'syndicate', name: "SYNDICATE PUSH", desc: "The underworld is active. Expect more bribes and larger amounts.", color: "text-purple-400" };
+            return null;
+        };
+
+        const generateNewDirective = (currentDay, ev) => {
+            if (ev?.id === 'bomb') return { text: "CRITICAL: Extremists reported in sector. Detain anyone carrying an explosive device.", type: 'normal' };
+            const roll = Math.random();
+            if (roll < 0.3 && currentDay > 1) {
+                const target = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
+                return { text: `Tensions high. Deny all citizens of ${target}. Demand a 'Signed Letter from the Moon'.`, type: 'ridiculous', targetCountry: target, ridiculousItem: 'Signed Letter from the Moon' };
+            } else if (roll < 0.6 && currentDay > 2) {
+                return { text: `Smugglers active. Reject anyone with a 'Suspicious Package'. Demand a 'Left-handed Screwdriver'.`, type: 'ridiculous', targetItem: 'Suspicious Package', ridiculousItem: 'Left-handed Screwdriver' };
+            } else {
+                return { text: "Routine checks. Ensure passports are valid (Year: 1985). Scan for contraband.", type: 'normal' };
+            }
+        };
+
+        // --- Logic Handlers ---
+        window.startGame = (fromCheckpoint = false) => {
+            playClick();
+            if (fromCheckpoint && state.checkpoint) {
+                state.day = state.checkpoint.day; state.quota = 0; state.familyComfort = state.checkpoint.familyComfort;
+                state.rankProgress = state.checkpoint.rankProgress; state.rankLevel = state.checkpoint.rankLevel; state.streak = 0; state.debt = state.checkpoint.debt;
+                state.upgrades = JSON.parse(JSON.stringify(state.checkpoint.upgrades));
+                const ev = generateDailyEvent(); state.dailyEvent = ev; state.directive = generateNewDirective(state.day, ev);
+                state.wantedCriminal = null; state.currentNPC = generatePasserby(state.day, null, ev);
+            } else {
+                state.day = 1; state.quota = 0; state.familyComfort = 80; state.rankProgress = 0; state.rankLevel = 1; state.streak = 0; state.debt = 0;
+                state.upgrades = { scannerLvl: 0, syndicateLvl: 0, heatLvl: 0, coffeeLvl: 0 }; state.checkpoint = null;
+                const ev = generateDailyEvent(); state.dailyEvent = ev; state.directive = generateNewDirective(1, ev);
+                state.wantedCriminal = null; state.currentNPC = generatePasserby(1, null, ev);
+            }
+            state.gameState = 'day_start'; state.cardState = 'story'; state.scanStatus = 'idle'; state.stamp = null; state.lootPopup = null; state.npcPatience = 100;
+            render();
+        };
+
+        window.setCardState = (tab) => {
+            playClick();
+            state.cardState = tab;
+            render();
+        }
+
+        window.handleScan = () => {
+            sfx.play('scan'); state.scanStatus = 'scanning';
+            render();
+            const scanTime = Math.max(300, 1500 - (state.upgrades.scannerLvl * 250)); 
+            setTimeout(() => {
+                if (state.currentNPC.hiddenItem) { state.scanStatus = 'contraband'; sfx.play('alert'); } 
+                else { state.scanStatus = 'clean'; sfx.play('approve'); }
+                render();
+            }, scanTime);
+        };
+
+        window.handleAction = (actionType) => {
+            if (state.animating || state.stamp || state.scanStatus === 'scanning') return;
+
+            let rankChange = 0; let comfortChange = 0; let visualStamp = ''; let mistakeMade = false; let lootResult = null;
+            
+            if (actionType === 'timeout') {
+                visualStamp = 'WALKED OFF'; rankChange = -15; mistakeMade = true;
+            } else {
+                if (actionType === 'allow' && state.currentNPC.isBomber) {
+                    state.stamp = 'APPROVED';
+                    render();
+                    sfx.play('explosion'); state.shake = true; render();
+                    setTimeout(() => {
+                        state.gameOverReason = "You approved an extremist. The checkpoint was destroyed in the blast.";
+                        state.gameState = 'game_over';
+                        render();
+                    }, 1000);
+                    return;
+                }
+
+                const isExpired = parseInt(state.currentNPC.passportExp) < 1985;
+                const isTargetCountry = state.directive.type === 'ridiculous' && state.directive.targetCountry === state.currentNPC.country;
+                const hasTargetItem = state.directive.type === 'ridiculous' && state.currentNPC.items.includes(state.directive.targetItem);
+                const hasContraband = !!state.currentNPC.hiddenItem;
+                const shouldBeDenied = isExpired || isTargetCountry || hasTargetItem || hasContraband || state.currentNPC.isWanted || state.currentNPC.isBomber;
+
+                if (actionType === 'allow') {
+                    visualStamp = 'APPROVED';
+                    if (state.currentNPC.isWanted) { rankChange = -60; mistakeMade = true; } 
+                    else if (shouldBeDenied) { rankChange = -15; mistakeMade = true; } 
+                    else { rankChange = 5; }
+                } 
+                else if (actionType === 'deny') {
+                    visualStamp = 'DENIED';
+                    if (state.currentNPC.isWanted || state.currentNPC.isBomber) { rankChange = -30; mistakeMade = true; } 
+                    else if (shouldBeDenied) { 
+                        if (state.directive.type === 'ridiculous' && (isTargetCountry || hasTargetItem)) { rankChange = -5; mistakeMade = true; } 
+                        else { rankChange = 5; }
+                    } else { rankChange = -10; mistakeMade = true; }
+                } 
+                else if (actionType === 'bribe') {
+                    visualStamp = 'BRIBED';
+                    comfortChange = Math.floor(state.currentNPC.bribe * (1 + (state.upgrades.syndicateLvl * 0.2)));
+                    rankChange = -25; mistakeMade = true; 
+                    if (state.currentNPC.isWanted) rankChange -= 40; 
+                } 
+                else if (actionType === 'ridiculous') {
+                    visualStamp = 'DENIED';
+                    if (state.directive.type === 'ridiculous' && (isTargetCountry || hasTargetItem)) rankChange = 10; 
+                    else { rankChange = -15; mistakeMade = true; }
+                }
+                else if (actionType === 'detain_report') {
+                    visualStamp = 'DETAINED';
+                    if (state.currentNPC.isWanted) { rankChange = state.wantedCriminal.bountyRank; comfortChange = state.wantedCriminal.bountyComfort; state.wantedCriminal = null; } 
+                    else if (state.currentNPC.isBomber) { rankChange = 50; } 
+                    else if (hasContraband) { rankChange = 15; } 
+                    else { rankChange = -25; mistakeMade = true; }
+                }
+                else if (actionType === 'detain_confiscate') {
+                    visualStamp = 'DETAINED'; mistakeMade = true; 
+                    if (state.currentNPC.isBomber) {
+                        sfx.play('explosion'); state.shake = true; render();
+                        setTimeout(() => { state.gameOverReason = "You tried to steal an explosive device. It detonated in the back room."; state.gameState = 'game_over'; render(); }, 1000);
+                        return;
+                    }
+                    if (hasContraband) {
+                        const roll = Math.random();
+                        if (roll > 0.90) { comfortChange = 40; lootResult = 'JACKPOT'; } 
+                        else if (roll > 0.60) { comfortChange = 10; lootResult = 'RARE'; } 
+                        else { comfortChange = 2; lootResult = 'JUNK'; } 
+                        
+                        if (Math.random() < 0.2) {
+                            rankChange = -30; visualStamp = 'CAUGHT'; comfortChange = 0; lootResult = 'CONFISCATED BY CMD';
+                        }
+                    } else { rankChange = -25; }
+                }
+            }
+
+            if (mistakeMade) {
+                state.streak = 0;
+                if (state.dailyEvent?.id === 'inspection') rankChange *= 2; 
+            } else {
+                state.streak++;
+                if (state.streak >= 3) rankChange = Math.floor(rankChange * 1.5); 
+                if (state.streak >= 10) rankChange *= 2;
+            }
+
+            state.stamp = visualStamp;
+            if (visualStamp !== 'WALKED OFF') sfx.play('stamp');
+            
+            if (lootResult) {
+                state.lootPopup = { type: lootResult, amount: comfortChange };
+                if (lootResult === 'JACKPOT') setTimeout(() => sfx.play('jackpot'), 200);
+                else if (lootResult === 'RARE') setTimeout(() => sfx.play('bribe'), 200);
+            } else if (actionType === 'bribe') {
+                setTimeout(() => sfx.play('bribe'), 200);
+            } else if (mistakeMade && actionType !== 'timeout') {
+                setTimeout(() => sfx.play('deny'), 200);
+            } else if (!mistakeMade) {
+                setTimeout(() => sfx.play('approve'), 200);
+            }
+            
+            if (visualStamp === 'DENIED' || visualStamp === 'CAUGHT' || visualStamp === 'WALKED OFF') {
+                state.shake = true; 
+                setTimeout(() => { state.shake = false; render(); }, 500);
+            }
+            if (state.currentNPC && state.currentNPC.isWanted) state.wantedCriminal = null;
+            
+            render(); // render stamp immediately
+            const dir = (actionType === 'allow' || actionType === 'bribe') ? 'right' : 'left';
+
+            setTimeout(() => {
+                state.animating = dir;
+                render();
+                setTimeout(() => {
+                    state.rankProgress += rankChange;
+                    if (state.rankProgress >= 100) { state.rankLevel++; state.rankProgress -= 100; }
+                    if (state.rankProgress < 0 && state.rankLevel > 1) { state.rankLevel--; state.rankProgress += 100; } 
+                    
+                    state.familyComfort += comfortChange;
+                    state.quota++;
+                    
+                    if (state.rankLevel === 1 && state.rankProgress <= -50) {
+                        state.gameOverReason = "Command has reviewed your atrocious performance. You have been stripped of your rank and sent to the labor camps.";
+                        sfx.play('gameover'); state.gameState = 'game_over'; render(); return;
+                    }
+
+                    if (state.quota >= getTargetQuota()) {
+                        state.gameState = 'day_end';
+                    } else {
+                        state.currentNPC = generatePasserby(state.day, state.wantedCriminal, state.dailyEvent);
+                        state.cardState = 'story'; state.scanStatus = 'idle'; state.stamp = null; state.lootPopup = null; state.npcPatience = 100;
+                        state.animating = 'in'; 
+                        setTimeout(() => { state.animating = null; render(); }, 300);
+                    }
+                    render();
+                }, 400); 
+            }, 700); 
+        };
+
+        window.handleEndDay = () => {
+            playClick();
+            let dailyExpense = getBaseDailyCost() - (state.upgrades.heatLvl * 5);
+            if (state.dailyEvent?.id === 'freeze') dailyExpense *= 2;
+            dailyExpense = Math.max(5, dailyExpense); 
+            if (state.debt > 0) dailyExpense += 25; 
+
+            state.familyComfort -= dailyExpense;
+            
+            if (state.familyComfort <= 0) {
+                if (state.debt === 0) {
+                    state.gameState = 'loan_offer'; render(); return;
+                } else {
+                    state.gameOverReason = `You defaulted on your Syndicate loan. They came to your house in the middle of the night. You failed your family.`;
+                    sfx.play('gameover'); state.gameState = 'game_over'; render(); return;
+                }
+            }
+            
+            state.day++;
+            const ev = generateDailyEvent(); state.dailyEvent = ev; state.directive = generateNewDirective(state.day, ev);
+            
+            if (state.day % 5 === 1) {
+                state.checkpoint = { day: state.day, familyComfort: state.familyComfort, rankProgress: state.rankProgress, rankLevel: state.rankLevel, upgrades: JSON.parse(JSON.stringify(state.upgrades)), debt: state.debt };
+            }
+            
+            let currentWanted = state.wantedCriminal;
+            if (state.day % 4 === 0 && !currentWanted) currentWanted = generateNewWanted(state.day);
+            state.wantedCriminal = currentWanted;
+
+            state.quota = 0; state.currentNPC = generatePasserby(state.day, currentWanted, ev);
+            state.gameState = 'day_start'; state.cardState = 'story'; state.scanStatus = 'idle'; state.stamp = null; state.animating = null; state.lootPopup = null; state.npcPatience = 100;
+            render();
+        };
+
+        window.acceptLoan = () => {
+            sfx.play('bribe');
+            state.familyComfort += 100;
+            state.debt = 200; 
+            
+            state.day++;
+            const ev = generateDailyEvent(); state.dailyEvent = ev; state.directive = generateNewDirective(state.day, ev);
+            let currentWanted = state.wantedCriminal;
+            if (state.day % 4 === 0 && !currentWanted) currentWanted = generateNewWanted(state.day);
+            state.wantedCriminal = currentWanted;
+            state.quota = 0; state.currentNPC = generatePasserby(state.day, currentWanted, ev);
+            state.gameState = 'day_start'; state.cardState = 'story'; state.scanStatus = 'idle'; state.stamp = null; state.animating = null; state.lootPopup = null; state.npcPatience = 100;
+            render();
+        };
+
+        window.buyUpgrade = (type) => {
+            let bought = false;
+            const costScanner = Math.floor(40 + (state.upgrades.scannerLvl * 30));
+            const costHeat = Math.floor(50 + Math.pow(state.upgrades.heatLvl, 1.5) * 20);
+            const costSyndicate = Math.floor(100 + Math.pow(state.upgrades.syndicateLvl, 1.8) * 30);
+            const costCoffee = Math.floor(75 + (state.upgrades.coffeeLvl * 50));
+
+            if (type === 'scanner' && state.familyComfort >= costScanner && state.upgrades.scannerLvl < 5) { 
+                state.familyComfort -= costScanner; state.upgrades.scannerLvl++; bought = true; 
+            } else if (type === 'heat' && state.familyComfort >= costHeat) { 
+                state.familyComfort -= costHeat; state.upgrades.heatLvl++; bought = true; 
+            } else if (type === 'syndicate' && state.familyComfort >= costSyndicate) { 
+                state.familyComfort -= costSyndicate; state.upgrades.syndicateLvl++; bought = true; 
+            } else if (type === 'coffee' && state.familyComfort >= costCoffee && state.upgrades.coffeeLvl < 3) { 
+                state.familyComfort -= costCoffee; state.upgrades.coffeeLvl++; bought = true; 
+            } else if (type === 'bribeCmd' && state.familyComfort >= 50) {
+                state.familyComfort -= 50;
+                state.rankProgress += 25; 
+                if (state.rankProgress >= 100) { state.rankLevel++; state.rankProgress -= 100; } 
+                bought = true;
+            } else if (type === 'payDebt' && state.familyComfort >= state.debt) {
+                state.familyComfort -= state.debt; state.debt = 0; bought = true;
+            }
+            if (bought) { sfx.play('bribe'); render(); } else sfx.play('click');
+        };
+
+        window.startPlaying = () => {
+            playClick();
+            state.gameState = 'playing'; 
+            state.animating = 'in'; 
+            render();
+            setTimeout(() => { state.animating = null; render(); }, 300);
+        }
+
+        window.reloadGame = () => window.location.reload();
+
+        // --- Render Helpers ---
+        const renderAvatar = (name) => {
+            if(!name) return '';
+            const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            const hue = hash % 360;
+            const bg = `hsl(${hue}, 30%, 75%)`;
+            const skin = `hsl(${(hue + 40) % 360}, 50%, 65%)`;
+            const isSquare = hash % 2 === 0;
+            const mouth = hash % 3 === 0 ? "M 28 36 Q 32 40 36 36" : "M 28 38 L 36 38";
+            
+            return `
+            <svg viewBox="0 0 64 64" class="w-full h-full rounded border-2 border-slate-700 bg-white shadow-inner">
+                <rect width="64" height="64" fill="${bg}" />
+                <path d="M 12 64 Q 32 30 52 64" fill="${skin}" stroke="#1e293b" stroke-width="2" />
+                ${isSquare 
+                    ? `<rect x="20" y="16" width="24" height="28" rx="6" fill="${skin}" stroke="#1e293b" stroke-width="2" />`
+                    : `<circle cx="32" cy="30" r="14" fill="${skin}" stroke="#1e293b" stroke-width="2" />`
+                }
+                <circle cx="27" cy="28" r="2" fill="#1e293b" />
+                <circle cx="37" cy="28" r="2" fill="#1e293b" />
+                <path d="${mouth}" stroke="#1e293b" stroke-width="2" fill="none" stroke-linecap="round" />
+            </svg>`;
+        };
+
+        // --- Main Render System ---
+        const render = () => {
+            const root = document.getElementById('app-root');
+            let html = '';
+
+            // Manage timers on render
+            clearInterval(patienceInterval);
+            clearInterval(bombInterval);
+            clearTimeout(speechTimeout);
+
+            if (state.gameState === 'intro') {
+                html = `
+                <div class="min-h-screen bg-slate-950 text-slate-300 flex flex-col items-center justify-center p-4 md:p-6 font-mono bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 to-slate-950">
+                    <div class="max-w-2xl w-full bg-[#e8dcc4] border border-[#c4b595] rounded shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden text-slate-900">
+                        <div class="absolute top-0 left-0 w-full h-4 bg-[#c4b595] opacity-50"></div>
+                        <div class="absolute top-12 right-8 border-4 border-red-700/80 text-red-700/80 font-black text-5xl p-2 rotate-12 uppercase tracking-widest pointer-events-none mix-blend-multiply opacity-80">CLASSIFIED</div>
+                        <div class="p-8 md:p-12 pt-16">
+                            <div class="flex items-start gap-4 border-b-2 border-slate-800 pb-6 mb-6">
+                                <i data-lucide="shield" class="text-slate-800 w-16 h-16 flex-shrink-0" stroke-width="1.5"></i>
+                                <div><h1 class="text-4xl font-black tracking-tighter uppercase text-slate-900 leading-none">OPERATION: PASSER BY</h1><p class="text-slate-700 font-bold tracking-widest text-sm mt-2">MINISTRY OF BORDER CONTROL // EYES ONLY</p></div>
+                            </div>
+                            <div class="space-y-4 text-base md:text-lg leading-relaxed font-serif font-medium text-slate-800 mb-8">
+                                <p><strong class="bg-slate-900 text-[#e8dcc4] px-1 font-mono uppercase text-sm mr-2">SUBJECT:</strong> Field Agent Deployment</p>
+                                <p>Your mandate is to verify travel documents, intercept contraband, and execute directives. The economy is in freefall.</p>
+                                <div class="bg-red-950/10 border-l-4 border-red-700 p-4 shadow-inner mt-4 font-mono text-sm text-slate-900">
+                                    <p class="text-red-800 font-black mb-2 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-4 h-4"></i> SURVIVAL PARAMETERS:</p>
+                                    <ul class="list-disc pl-5 space-y-2">
+                                        <li><strong>TIME PRESSURE:</strong> Do not dawdle. Travelers lose patience and will storm off, damaging your standing.</li>
+                                        <li><strong>THE SINK:</strong> Launder dirty bribe money into official <span class="font-black text-blue-800">RANK</span> to survive.</li>
+                                        <li><strong>BOMB THREATS:</strong> Extremists are active. Approving an explosive or trying to steal it results in instant death.</li>
+                                        <li><strong>DEBT:</strong> If you cannot feed your family, the Syndicate will offer predatory loans. Do not cross them.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <button onclick="startGame(false)" class="w-full py-4 bg-slate-900 hover:bg-slate-800 text-[#e8dcc4] font-black text-xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 shadow-xl font-mono tracking-widest border border-slate-700">SIGN DEPLOYMENT PAPERS <i data-lucide="arrow-right" class="w-6 h-6"></i></button>
+                        </div>
+                    </div>
+                </div>`;
+            } 
+            else if (state.gameState === 'day_start') {
+                html = `
+                <div class="min-h-screen bg-slate-950 text-slate-300 flex flex-col items-center justify-center p-6 font-mono bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 to-slate-950">
+                    <div class="max-w-md w-full bg-slate-900 border-2 border-slate-700 p-8 rounded-lg shadow-2xl text-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-2 bg-amber-500"></div>
+                        ${state.day > 1 && state.day % 5 === 1 ? `<div class="absolute top-4 left-1/2 -translate-x-1/2 bg-green-500 text-green-950 font-black text-[10px] px-3 py-1 rounded-full tracking-widest animate-bounce">CHECKPOST SAVED</div>` : ''}
+                        <h2 class="text-4xl font-black text-white mb-2 tracking-widest mt-4">DAY ${state.day}</h2>
+                        <div class="h-px bg-slate-700 w-full my-6"></div>
+                        
+                        ${state.dailyEvent ? `
+                        <div class="mb-6 p-4 rounded border-2 border-dashed ${state.dailyEvent.color.replace('text-', 'border-').replace('500', '500/50')} bg-slate-950 ${state.dailyEvent.id === 'bomb' ? 'animate-pulse' : ''}">
+                            <h4 class="font-black tracking-widest text-xl mb-1 ${state.dailyEvent.color}">${state.dailyEvent.id === 'bomb' ? '<i data-lucide="bomb" class="inline mr-2 w-5 h-5"></i>' : ''}${state.dailyEvent.name}</h4>
+                            <p class="text-sm font-bold text-slate-400">${state.dailyEvent.desc}</p>
+                        </div>` : ''}
+
+                        <h3 class="text-xl text-amber-500 font-bold mb-4 tracking-widest">NEW DIRECTIVE</h3>
+                        <p class="text-lg mb-8 bg-slate-950 p-6 border rounded-lg shadow-inner font-serif italic ${state.dailyEvent?.id === 'bomb' ? 'border-orange-500/50 text-orange-200' : 'border-slate-800 text-slate-300'}">"${state.directive?.text}"</p>
+                        <div class="flex items-center justify-center gap-2 text-slate-400 mb-8 font-bold tracking-widest"><i data-lucide="clock" class="w-4 h-4"></i> <span>QUOTA: ${getTargetQuota()} PASSES</span></div>
+                        <button onclick="startPlaying()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded transition-all hover:scale-[1.02] active:scale-95 shadow-[0_0_15px_rgba(37,99,235,0.3)] tracking-widest">OPEN CHECKPOINT</button>
+                    </div>
+                </div>`;
+            }
+            else if (state.gameState === 'loan_offer') {
+                html = `
+                <div class="min-h-screen bg-slate-950 text-slate-300 flex flex-col items-center justify-center p-6 font-mono relative overflow-hidden">
+                    <div class="absolute inset-0 bg-purple-900/10 pointer-events-none"></div>
+                    <div class="max-w-md w-full bg-slate-900 border-2 border-purple-900 p-8 rounded-lg shadow-2xl text-center relative z-10">
+                        <i data-lucide="skull" class="mx-auto text-purple-500 mb-4 w-16 h-16"></i>
+                        <h2 class="text-3xl font-black text-purple-500 mb-2 tracking-widest">EVICTION NOTICE</h2>
+                        <div class="h-px bg-purple-900 w-full my-6"></div>
+                        <p class="text-lg mb-8 leading-relaxed text-slate-300 font-serif italic">"Looks like you're short on rent, friend. Your family will freeze tonight. The Syndicate can help... for a price."</p>
+                        <div class="bg-slate-950 p-4 rounded border border-purple-800 space-y-2 mb-8 text-left text-sm uppercase tracking-widest font-bold">
+                            <p class="flex justify-between text-slate-400"><span>Loan Amount:</span> <span class="text-green-500">+100 CMF</span></p>
+                            <p class="flex justify-between text-slate-400"><span>Debt Accrued:</span> <span class="text-red-500">-200 CMF</span></p>
+                            <p class="flex justify-between text-slate-400"><span>Daily Interest:</span> <span class="text-red-500">-25 CMF / DAY</span></p>
+                        </div>
+                        <div class="flex flex-col gap-3">
+                            <button onclick="acceptLoan()" class="w-full py-4 bg-purple-900 hover:bg-purple-800 text-white font-black rounded transition-all hover:scale-[1.02] active:scale-95 shadow-lg tracking-widest">TAKE THE LOAN (SURVIVE)</button>
+                            <button onclick="state.gameOverReason='You refused the loan. Your family was evicted and starved in the streets.'; state.gameState='game_over'; render();" class="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-500 font-bold rounded transition-all">REFUSE & ACCEPT FATE</button>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            else if (state.gameState === 'day_end') {
+                let dailyExpense = getBaseDailyCost() - (state.upgrades.heatLvl * 5);
+                if (state.dailyEvent?.id === 'freeze') dailyExpense *= 2;
+                dailyExpense = Math.max(5, dailyExpense); 
+                if (state.debt > 0) dailyExpense += 25;
+
+                const costScanner = Math.floor(40 + (state.upgrades.scannerLvl * 30));
+                const costHeat = Math.floor(50 + Math.pow(state.upgrades.heatLvl, 1.5) * 20);
+                const costSyndicate = Math.floor(100 + Math.pow(state.upgrades.syndicateLvl, 1.8) * 30);
+                const costCoffee = Math.floor(75 + (state.upgrades.coffeeLvl * 50));
+
+                html = `
+                <div class="min-h-screen bg-slate-950 text-slate-300 flex flex-col items-center justify-start p-4 md:p-8 font-mono overflow-y-auto">
+                    <div class="max-w-xl w-full bg-[#f4e4bc] border-2 border-[#d4c49c] p-6 rounded-sm shadow-2xl text-slate-900 relative mb-8 mt-4">
+                        <div class="border-b-4 border-double border-slate-800 pb-4 mb-6 flex justify-between items-end">
+                            <div><h2 class="text-3xl font-black mb-1 uppercase tracking-widest">SHIFT REPORT</h2></div>
+                            <div class="text-right">
+                                <p class="text-xs font-bold text-slate-500 uppercase">Vault Balance</p>
+                                <p class="text-3xl font-black text-green-700 flex items-center justify-end gap-1"><i data-lucide="home" class="w-5 h-5"></i>${state.familyComfort}</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 text-lg font-bold">
+                            <div class="flex justify-between items-center border-b border-slate-400 pb-2"><span class="text-slate-700">Rank Standing</span> <span class="text-blue-800 bg-blue-100 px-2 rounded">Lv.${state.rankLevel} (${state.rankProgress}/100)</span></div>
+                            <div class="flex justify-between items-center pt-2 text-red-700 bg-red-100 p-2 rounded"><span class="flex items-center gap-2"><i data-lucide="flame" class="w-[18px] h-[18px]"></i> Living Expenses ${state.debt>0 ? '(+Debt)' : ''}</span> <span>-${dailyExpense} CMF</span></div>
+                        </div>
+                    </div>
+
+                    <div class="max-w-xl w-full bg-slate-900 border border-slate-700 p-6 rounded-lg shadow-xl mb-8">
+                        <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2 border-b border-slate-800 pb-3"><i data-lucide="shopping-cart" class="text-amber-500 w-5 h-5"></i> The Black Market</h3>
+                        <div class="space-y-3">
+                            
+                            ${state.debt > 0 ? `
+                            <div class="p-4 rounded border bg-purple-950/40 border-purple-800 flex justify-between items-center shadow-[inset_0_0_10px_rgba(168,85,247,0.2)]">
+                                <div class="flex gap-4 items-center">
+                                    <div class="w-10 h-10 rounded flex items-center justify-center bg-purple-900/60 text-purple-400"><i data-lucide="skull" class="w-5 h-5"></i></div>
+                                    <div><h4 class="font-bold text-purple-300">Pay Off Syndicate</h4><p class="text-xs text-purple-400/70">Clear your massive ${state.debt} CMF debt.</p></div>
+                                </div>
+                                <button ${state.familyComfort < state.debt ? 'disabled' : ''} onclick="buyUpgrade('payDebt')" class="py-2 px-4 rounded font-bold text-sm ${state.familyComfort >= state.debt ? 'bg-purple-600 hover:bg-purple-500 text-white' : 'bg-slate-800 text-slate-600'}">${state.debt} CMF</button>
+                            </div>` : ''}
+
+                            <div class="p-4 rounded border bg-slate-950 border-slate-800 flex justify-between items-center">
+                                <div class="flex gap-4 items-center">
+                                    <div class="w-10 h-10 rounded flex items-center justify-center bg-blue-900/30 text-blue-400"><i data-lucide="award" class="w-5 h-5"></i></div>
+                                    <div><h4 class="font-bold text-slate-200">"Donate" to Command</h4><p class="text-xs text-slate-500">Launder comfort to buy +25 Rank.</p></div>
+                                </div>
+                                <button ${state.familyComfort < 50 ? 'disabled' : ''} onclick="buyUpgrade('bribeCmd')" class="py-2 px-4 rounded font-bold text-sm ${state.familyComfort >= 50 ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-slate-800 text-slate-600'}">50 CMF</button>
+                            </div>
+                            
+                            <div class="p-4 rounded border bg-slate-950 border-slate-800 flex justify-between items-center">
+                                <div class="flex gap-4 items-center">
+                                    <div class="w-10 h-10 rounded flex items-center justify-center bg-orange-900/30 text-orange-400"><i data-lucide="coffee" class="w-5 h-5"></i></div>
+                                    <div><h4 class="font-bold text-slate-200">Imported Coffee (Lv.${state.upgrades.coffeeLvl})</h4><p class="text-xs text-slate-500">${state.upgrades.coffeeLvl >= 3 ? 'MAX LEVEL' : 'Increases traveler patience.'}</p></div>
+                                </div>
+                                <button ${state.familyComfort < costCoffee || state.upgrades.coffeeLvl >= 3 ? 'disabled' : ''} onclick="buyUpgrade('coffee')" class="py-2 px-4 rounded font-bold text-sm ${state.upgrades.coffeeLvl >= 3 ? 'bg-green-900/20 text-green-600' : state.familyComfort >= costCoffee ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-slate-800 text-slate-600'}">${state.upgrades.coffeeLvl >= 3 ? 'MAX' : `${costCoffee} CMF`}</button>
+                            </div>
+
+                            <div class="p-4 rounded border bg-slate-950 border-slate-800 flex justify-between items-center">
+                                <div class="flex gap-4 items-center">
+                                    <div class="w-10 h-10 rounded flex items-center justify-center bg-cyan-900/30 text-cyan-400"><i data-lucide="zap" class="w-5 h-5"></i></div>
+                                    <div><h4 class="font-bold text-slate-200">Scanner Engine (Lv.${state.upgrades.scannerLvl})</h4><p class="text-xs text-slate-500">${state.upgrades.scannerLvl >= 5 ? 'MAX LEVEL' : 'Increases scan speed.'}</p></div>
+                                </div>
+                                <button ${state.familyComfort < costScanner || state.upgrades.scannerLvl >= 5 ? 'disabled' : ''} onclick="buyUpgrade('scanner')" class="py-2 px-4 rounded font-bold text-sm ${state.upgrades.scannerLvl >= 5 ? 'bg-green-900/20 text-green-600' : state.familyComfort >= costScanner ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-slate-800 text-slate-600'}">${state.upgrades.scannerLvl >= 5 ? 'MAX' : `${costScanner} CMF`}</button>
+                            </div>
+
+                            <div class="p-4 rounded border bg-slate-950 border-slate-800 flex justify-between items-center">
+                                <div class="flex gap-4 items-center">
+                                    <div class="w-10 h-10 rounded flex items-center justify-center bg-red-900/30 text-red-400"><i data-lucide="flame" class="w-5 h-5"></i></div>
+                                    <div><h4 class="font-bold text-slate-200">Insulation (Lv.${state.upgrades.heatLvl})</h4><p class="text-xs text-slate-500">Reduces base daily expenses by 5.</p></div>
+                                </div>
+                                <button ${state.familyComfort < costHeat ? 'disabled' : ''} onclick="buyUpgrade('heat')" class="py-2 px-4 rounded font-bold text-sm ${state.familyComfort >= costHeat ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-slate-800 text-slate-600'}">${costHeat} CMF</button>
+                            </div>
+
+                            <div class="p-4 rounded border bg-slate-950 border-slate-800 flex justify-between items-center">
+                                <div class="flex gap-4 items-center">
+                                    <div class="w-10 h-10 rounded flex items-center justify-center bg-purple-900/30 text-purple-400"><i data-lucide="trending-up" class="w-5 h-5"></i></div>
+                                    <div><h4 class="font-bold text-slate-200">Syndicate Ties (Lv.${state.upgrades.syndicateLvl})</h4><p class="text-xs text-slate-500">Increases all bribes by 20% per level.</p></div>
+                                </div>
+                                <button ${state.familyComfort < costSyndicate ? 'disabled' : ''} onclick="buyUpgrade('syndicate')" class="py-2 px-4 rounded font-bold text-sm ${state.familyComfort >= costSyndicate ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-slate-800 text-slate-600'}">${costSyndicate} CMF</button>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="handleEndDay()" class="max-w-xl w-full py-5 bg-slate-800 hover:bg-slate-700 border-2 border-slate-600 text-white font-black text-xl rounded transition-all hover:scale-[1.02] active:scale-95 shadow-lg tracking-widest sticky bottom-4 z-50">
+                        PAY ${dailyExpense} CMF & SLEEP
+                    </button>
+                </div>`;
+            }
+            else if (state.gameState === 'game_over') {
+                html = `
+                <div class="min-h-screen bg-slate-950 text-slate-300 flex flex-col items-center justify-center p-6 font-mono relative overflow-hidden">
+                    <div class="absolute inset-0 bg-red-900/10 animate-pulse pointer-events-none"></div>
+                    <div class="max-w-md w-full bg-slate-900 border-2 border-red-900 p-8 rounded-lg shadow-2xl text-center relative z-10">
+                        <h2 class="text-5xl font-black text-red-500 mb-2 tracking-widest">TERMINATED</h2>
+                        <div class="h-px bg-red-900 w-full my-6"></div>
+                        <p class="text-lg mb-8 leading-relaxed text-slate-300 bg-slate-950 p-4 rounded border border-slate-800 font-serif italic">${state.gameOverReason}</p>
+                        <div class="bg-slate-800/50 p-4 rounded border border-slate-700 space-y-2 mb-8 text-left text-sm uppercase tracking-widest font-bold">
+                            <p class="flex justify-between text-slate-400"><span>Survived:</span> <span class="text-white">Day ${state.day}</span></p>
+                            <p class="flex justify-between text-slate-400"><span>Final Rank:</span> <span class="text-white">Level ${state.rankLevel}</span></p>
+                            <p class="flex justify-between text-slate-400"><span>Final Streak:</span> <span class="text-white">${state.streak} Flawless</span></p>
+                        </div>
+                        <div class="flex flex-col gap-3">
+                            ${state.checkpoint && state.checkpoint.day > 1 ? `
+                            <button onclick="startGame(true)" class="w-full py-4 bg-amber-600 hover:bg-amber-500 text-white font-black rounded transition-all hover:scale-[1.02] active:scale-95 shadow-lg tracking-widest">
+                                RESTORE CHECKPOST (DAY ${state.checkpoint.day})
+                            </button>` : ''}
+                            <button onclick="startGame(false)" class="w-full py-4 bg-slate-800 hover:bg-slate-700 border border-red-900/50 text-red-400 hover:text-white font-bold rounded transition-all hover:scale-[1.02] active:scale-95 shadow-lg tracking-widest">
+                                ERASE RECORD & REBOOT (DAY 1)
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            else if (state.gameState === 'playing') {
+                const isStreakHot = state.streak >= 3;
+                const cBribeVal = getCurrentBribeValue();
+
+                // Setup Timers specifically for playing state
+                if (!state.animating && !state.stamp && state.scanStatus !== 'scanning') {
+                    const drainRate = (state.upgrades.coffeeLvl > 0 ? 1.0 : 2.5) + (state.day * 0.1); 
+                    patienceInterval = setInterval(() => {
+                        state.npcPatience -= drainRate;
+                        if (state.npcPatience <= 0) {
+                            clearInterval(patienceInterval);
+                            handleAction('timeout');
+                        } else if (state.npcPatience < 30 && state.npcPatience + drainRate >= 30) {
+                            sfx.play('alert');
+                        }
+                        // Manual fast DOM update for patience bar
+                        const bar = document.getElementById('patience-bar-fill');
+                        const icon = document.getElementById('patience-icon');
+                        if (bar) {
+                            bar.style.width = `${state.npcPatience}%`;
+                            bar.className = `h-full transition-all duration-200 ${getPatienceColor()}`;
+                        }
+                        if (icon && state.npcPatience < 30) icon.classList.add('text-red-500', 'animate-pulse');
+                    }, 200);
+
+                    // Dialogues trigger
+                    if (state.cardState === 'story' && !state.npcSpeech) {
+                        speechTimeout = setTimeout(() => {
+                            const randomDialogues = [
+                                "It's freezing, please hurry...",
+                                "My family is waiting for me!",
+                                "How much longer will this take?",
+                                "I have a bus to catch, Officer.",
+                                "Is there a problem with my papers?",
+                                "I've been standing in line for hours."
+                            ];
+                            const genericDialogue = randomDialogues[Math.floor(Math.random() * randomDialogues.length)];
+                            state.npcSpeech = state.currentNPC.isVIP ? "Do you know who I am? Hurry it up." : (state.currentNPC.bribe > 0 ? "We can come to a quiet arrangement..." : genericDialogue);
+                            render();
+                        }, 3000);
+                    }
+                }
+
+                if (state.dailyEvent?.id === 'bomb') {
+                    bombInterval = setInterval(() => {
+                        sfx.play('tick');
+                        state.tickSound = !state.tickSound;
+                        const el = document.getElementById('bomb-icon');
+                        if(el) {
+                            if(state.tickSound) el.classList.add('scale-125', 'transition-transform');
+                            else el.classList.remove('scale-125', 'transition-transform');
+                        }
+                    }, 1000);
+                }
+
+                html = `
+                <div class="min-h-screen bg-slate-950 text-slate-300 flex flex-col font-mono overflow-hidden ${state.shake ? 'animate-[shake_0.4s_ease-in-out]' : ''}">
+                    ${state.dailyEvent?.id === 'freeze' ? `
+                    <div class="absolute inset-0 pointer-events-none z-10 overflow-hidden opacity-40">
+                        ${[...Array(25)].map(() => `<div class="absolute bg-white rounded-full w-1.5 h-1.5" style="left: ${Math.random() * 100}%; animation: snow ${Math.random() * 3 + 2}s linear infinite; animation-delay: -${Math.random() * 5}s"></div>`).join('')}
+                    </div>` : ''}
+                    ${state.dailyEvent?.id === 'inspection' ? `<div class="absolute inset-0 pointer-events-none z-10 bg-red-600 animate-[siren_2s_ease-in-out_infinite]"></div>` : ''}
+                    ${state.dailyEvent?.id === 'bomb' ? `<div class="absolute inset-0 pointer-events-none z-10 bg-orange-600 animate-[siren_3s_ease-in-out_infinite]"></div>` : ''}
+
+                    <header class="bg-slate-900 border-b border-slate-800 p-4 flex flex-wrap justify-between items-center z-30 shadow-md">
+                        <div class="flex gap-4 sm:gap-6">
+                            <div class="flex flex-col"><span class="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider font-bold">Time</span><span class="font-bold text-white sm:text-lg">Day ${state.day}</span></div>
+                            <div class="flex flex-col"><span class="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider font-bold">Processed</span><span class="font-bold text-white sm:text-lg">${state.quota} <span class="text-slate-500">/ ${getTargetQuota()}</span></span></div>
+                            <div class="flex flex-col border-l border-slate-700 pl-4 sm:pl-6 relative">
+                                <span class="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider font-bold">Streak</span>
+                                <span class="font-black flex items-center gap-1 ${isStreakHot ? 'text-orange-500 animate-pulse' : 'text-slate-400'}">
+                                    <i data-lucide="flame" class="w-4 h-4"></i> ${state.streak} 
+                                    ${isStreakHot ? '<span class="absolute -top-1 -right-4 text-[10px] bg-orange-500 text-white px-1 rounded rounded-bl-none">x2</span>' : ''}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="flex gap-4 sm:gap-6">
+                            <div class="flex items-center gap-2 sm:gap-3">
+                                <i data-lucide="shield" class="text-blue-500 w-5 h-5"></i>
+                                <div class="flex flex-col">
+                                    <span class="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider font-bold">Rank ${state.rankLevel}</span>
+                                    <div class="w-16 sm:w-24 h-2 bg-slate-800 rounded-full mt-1 overflow-hidden border border-slate-700 relative">
+                                        <div class="absolute top-0 left-0 h-full bg-blue-500 transition-all duration-300" style="width: ${Math.max(0, state.rankProgress)}%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 sm:gap-3 border-l border-slate-700 pl-4 sm:pl-6">
+                                <i data-lucide="home" class="text-green-500 w-5 h-5"></i>
+                                <div class="flex flex-col">
+                                    <span class="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider font-bold">Comfort ${state.debt > 0 ? '<i data-lucide="skull" class="inline text-purple-500 w-2.5 h-2.5"></i>' : ''}</span>
+                                    <span class="font-bold sm:text-lg transition-all duration-300 ${state.debt > 0 ? 'text-purple-400' : 'text-green-400'}">${state.familyComfort}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div class="border-b p-2 text-center text-sm flex justify-center items-center gap-2 shadow-inner font-bold z-20 
+                        ${state.dailyEvent ? `bg-slate-900 ${state.dailyEvent.color.replace('text', 'border')}/30 ${state.dailyEvent.color}` : 'bg-amber-900/20 border-amber-900/30 text-amber-500/80'}">
+                        ${state.dailyEvent ? (state.dailyEvent.id === 'bomb' ? `<i id="bomb-icon" data-lucide="bomb" class="w-4 h-4"></i>` : `<i data-lucide="sparkles" class="w-4 h-4"></i>`) : `<i data-lucide="alert-triangle" class="w-4 h-4"></i>`} 
+                        ${state.dailyEvent ? `${state.dailyEvent.name}: ${state.dailyEvent.desc}` : state.directive?.text}
+                    </div>
+
+                    <main class="flex-1 flex flex-col md:flex-row items-center justify-center p-4 md:p-8 gap-8 overflow-y-auto bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-900 to-slate-950 relative w-full">
+                        
+                        ${state.wantedCriminal ? `
+                        <div class="hidden md:flex flex-col w-48 bg-slate-900 border border-slate-700 rounded-sm shadow-2xl p-3 rotate-[-3deg] absolute left-8 top-12 z-10">
+                            <div class="bg-red-900/50 border-b-2 border-red-900 text-center py-1 mb-3 rounded-sm shadow-inner">
+                                <span class="text-red-400 font-black tracking-widest text-lg flex items-center justify-center gap-1"><i data-lucide="target" class="w-4 h-4"></i> WANTED</span>
+                            </div>
+                            <div class="w-full h-36 bg-[#fefce8] border-4 border-white shadow-md p-1 mb-3 grayscale contrast-125">${renderAvatar(state.wantedCriminal.name)}</div>
+                            <div class="text-center font-bold text-slate-300 font-serif mb-2 border-b border-slate-700 pb-2">${state.wantedCriminal.name}</div>
+                            <div class="text-xs text-amber-500 font-bold uppercase tracking-wider text-center flex flex-col gap-1">
+                                <span>Reward:</span>
+                                <span class="bg-slate-950 py-1 rounded">+${state.wantedCriminal.bountyRank} RANK</span>
+                                <span class="bg-slate-950 py-1 rounded text-green-500">+${state.wantedCriminal.bountyComfort} CMF</span>
+                            </div>
+                        </div>
+                        <div class="md:hidden w-full max-w-sm bg-red-950/40 border border-red-900 text-red-400 p-2 rounded flex items-center justify-between shadow-inner mb-[-1rem] z-10 text-xs font-bold uppercase tracking-wider animate-pulse">
+                            <span class="flex items-center gap-2"><i data-lucide="target" class="w-3.5 h-3.5"></i> WANTED: ${state.wantedCriminal.name}</span>
+                        </div>
+                        ` : ''}
+
+                        ${state.currentNPC ? `
+                        <div class="w-full max-w-sm flex flex-col h-[480px] relative z-20 ${state.animating ? `card-${state.animating === 'in' ? 'enter' : `exit-${state.animating}`}` : ''}">
+                            
+                            ${!state.animating && !state.stamp ? `
+                            <div class="absolute -top-3 left-0 w-full h-1.5 bg-slate-800 rounded-full overflow-hidden flex shadow-lg border border-slate-700">
+                                <i id="patience-icon" data-lucide="timer" class="absolute -left-1 -top-1.5 w-3 h-3 ${state.npcPatience < 30 ? 'text-red-500 animate-pulse' : 'text-slate-500'}"></i>
+                                <div id="patience-bar-fill" class="h-full transition-all duration-200 ${getPatienceColor()}" style="width: ${state.npcPatience}%"></div>
+                            </div>` : ''}
+
+                            ${state.stamp ? `
+                            <div class="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+                                <div class="stamp-anim border-4 px-6 py-2 rounded-lg font-black text-4xl tracking-widest backdrop-blur-sm shadow-2xl
+                                ${state.stamp === 'APPROVED' ? 'border-green-500 text-green-500 bg-green-950/40' : 
+                                    state.stamp === 'CAUGHT' ? 'border-purple-600 text-purple-600 bg-purple-950/40' :
+                                    state.stamp === 'WALKED OFF' ? 'border-slate-500 text-slate-500 bg-slate-950/60' :
+                                    'border-red-600 text-red-600 bg-red-950/40'}">
+                                ${state.stamp}
+                                </div>
+                            </div>` : ''}
+
+                            ${state.lootPopup ? `
+                            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none flex flex-col items-center jackpot-anim">
+                                <span class="text-4xl font-black drop-shadow-lg ${state.lootPopup.type === 'JACKPOT' ? 'text-amber-400' : state.lootPopup.type === 'RARE' ? 'text-purple-400' : 'text-slate-400'}">${state.lootPopup.type}</span>
+                                ${state.lootPopup.amount > 0 ? `<span class="text-2xl font-bold text-green-400 drop-shadow-md">+${state.lootPopup.amount} CMF</span>` : ''}
+                            </div>` : ''}
+
+                            <div class="flex gap-1 mb-0.5 mt-4 md:mt-0">
+                                <button onclick="setCardState('story')" class="flex-1 py-3 rounded-t-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-1 transition-colors border-t border-l border-r ${state.cardState === 'story' ? 'bg-slate-800 text-white border-slate-600' : 'bg-slate-900/80 text-slate-500 border-slate-800'}"><i data-lucide="user" class="w-3.5 h-3.5"></i> Traveler</button>
+                                <button onclick="setCardState('documents')" class="flex-1 py-3 rounded-t-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-1 transition-colors border-t border-l border-r ${state.cardState === 'documents' ? 'bg-[#f4e4bc] text-amber-900 border-[#d4c49c]' : 'bg-slate-900/80 text-slate-500 border-slate-800'}"><i data-lucide="file-text" class="w-3.5 h-3.5"></i> Passport</button>
+                                <button onclick="setCardState('scanner')" class="flex-1 py-3 rounded-t-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-1 transition-colors border-t border-l border-r ${state.cardState === 'scanner' ? 'bg-slate-950 text-cyan-400 border-cyan-900 shadow-[inset_0_4px_10px_rgba(34,211,238,0.1)]' : 'bg-slate-900/80 text-slate-500 border-slate-800'}"><i data-lucide="scan" class="w-3.5 h-3.5"></i> Scanner</button>
+                            </div>
+
+                            <div class="relative flex-1 drop-shadow-2xl rounded-b-xl rounded-tr-xl border-2 overflow-hidden flex flex-col ${state.currentNPC.isVIP ? 'bg-slate-800 border-amber-500 shadow-[0_0_30px_rgba(245,158,11,0.2)]' : 'bg-slate-800 border-slate-600'}">
+                                
+                                ${state.cardState === 'story' ? `
+                                <div class="p-6 flex flex-col h-full relative before:absolute before:top-0 before:left-0 before:w-full before:h-1 before:bg-slate-600">
+                                    ${state.currentNPC.isVIP ? '<div class="absolute top-2 right-2 bg-amber-500 text-amber-950 text-[10px] font-black px-2 py-0.5 rounded-sm tracking-widest">VIP TARGET</div>' : ''}
+                                    <div class="flex items-center gap-4 mb-6 pb-6 border-b border-slate-700">
+                                        <div class="w-16 h-16 flex-shrink-0 drop-shadow-md">${renderAvatar(state.currentNPC.name)}</div>
+                                        <div>
+                                            <h3 class="text-xl font-black text-white leading-tight uppercase tracking-wider">${state.currentNPC.name}</h3>
+                                            <p class="text-sm text-slate-400 flex items-center gap-1 mt-1"><span class="w-2 h-2 rounded-full bg-slate-500 inline-block"></span> ${state.currentNPC.country}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    ${state.npcSpeech ? `
+                                    <div class="absolute top-20 right-6 bg-slate-100 text-slate-900 px-4 py-2 rounded-2xl rounded-tl-none font-bold text-sm shadow-2xl max-w-[220px] animate-[slideIn_0.2s_ease-out] z-30 border-2 border-slate-300 ${state.npcPatience < 30 ? 'animate-pulse text-red-600' : ''}">
+                                        ${state.npcSpeech}
+                                    </div>` : ''}
+                                    
+                                    <div class="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+                                        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Stated Reason for Travel:</p>
+                                        <div class="bg-slate-900/60 p-5 rounded-lg border border-slate-700/50 relative shadow-inner">
+                                            <div class="absolute top-2 left-2 text-6xl text-slate-700/50 font-serif leading-none h-4">"</div>
+                                            <p class="text-slate-200 relative z-10 italic leading-relaxed pt-2 pl-2">${state.currentNPC.reason}</p>
+                                        </div>
+
+                                        ${cBribeVal > 0 ? `
+                                        <div class="p-4 rounded-lg border flex items-start gap-3 mt-4 shadow-inner ${state.currentNPC.isVIP ? 'bg-amber-950/40 border-amber-500/60 shadow-[inset_0_0_20px_rgba(245,158,11,0.3)] animate-pulse' : 'bg-green-950/40 border-green-800/60'}">
+                                            <i data-lucide="dollar-sign" class="flex-shrink-0 mt-0.5 w-5 h-5 ${state.currentNPC.isVIP ? 'text-amber-500' : 'text-green-500'}"></i>
+                                            <p class="text-sm italic ${state.currentNPC.isVIP ? 'text-amber-400' : 'text-green-400'}">
+                                                "Open the gate, take this <strong class="${state.currentNPC.isVIP ? 'text-amber-200 bg-amber-900/50' : 'text-green-300 bg-green-900/50'} px-1 rounded text-lg">${cBribeVal} comfort</strong>, and forget you saw me."
+                                            </p>
+                                        </div>` : ''}
+                                    </div>
+                                </div>` : ''}
+
+                                ${state.cardState === 'documents' ? `
+                                <div class="bg-[#f4e4bc] p-6 flex flex-col text-slate-900 font-serif h-full relative">
+                                    <div class="absolute inset-0 opacity-5 pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMiIgY3k9IjIiIHI9IjEiIGZpbGw9IiMwMDAiLz48L3N2Zz4=')]"></div>
+                                    <div class="border-b-4 border-double border-amber-900/20 pb-4 mb-5 flex justify-between items-start relative z-10">
+                                        <div>
+                                            <h3 class="text-3xl font-black uppercase tracking-widest text-amber-900">PASSPORT</h3>
+                                            <p class="text-[10px] font-bold text-amber-800/60 uppercase tracking-widest mt-1">Republic of ${state.currentNPC.country}</p>
+                                        </div>
+                                        <div class="w-14 h-14 bg-amber-800 text-amber-100 flex items-center justify-center rounded-sm shadow-inner rotate-3"><i data-lucide="shield" class="w-8 h-8" stroke-width="1.5"></i></div>
+                                    </div>
+                                    <div class="space-y-5 flex-1 relative z-10">
+                                        <div class="flex gap-4 items-end">
+                                            <div class="w-20 h-24 flex-shrink-0 border-2 border-amber-800/30 p-1 bg-[#fefce8] rotate-[-2deg] shadow-sm">${renderAvatar(state.currentNPC.name)}</div>
+                                            <div class="flex-1 pb-1">
+                                                <p class="text-xs font-bold text-amber-700/60 uppercase tracking-wider">Name</p>
+                                                <p class="text-xl font-bold border-b border-amber-900/30 pb-1 text-slate-800 uppercase font-mono">${state.currentNPC.name}</p>
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <p class="text-xs font-bold text-amber-700/60 uppercase tracking-wider">Nationality</p>
+                                                <p class="text-md font-bold border-b border-amber-900/30 pb-1 font-mono uppercase text-slate-800">${state.currentNPC.country}</p>
+                                            </div>
+                                            <div>
+                                                <p class="text-xs font-bold text-amber-700/60 uppercase tracking-wider">Expires</p>
+                                                <p class="text-md font-bold border-b border-amber-900/30 pb-1 font-mono ${parseInt(state.currentNPC.passportExp) < 1985 ? 'text-red-600 bg-red-100 px-1 -mx-1 rounded inline-block' : 'text-slate-800'}">${state.currentNPC.passportExp}</p>
+                                            </div>
+                                        </div>
+                                        <div class="mt-4 pt-4 border-t-2 border-dashed border-amber-900/20 bg-amber-50/50 -mx-6 px-6 -mb-6 pb-6 rounded-b-xl">
+                                            <p class="text-xs font-bold text-amber-800 uppercase flex items-center gap-1.5 mb-2 tracking-widest"><i data-lucide="briefcase" class="w-3.5 h-3.5"></i> Inspection Report</p>
+                                            <ul class="list-none space-y-1 font-mono text-sm">
+                                                ${state.currentNPC.items.map(item => `
+                                                <li class="flex items-center gap-2 ${state.directive?.targetItem === item ? 'text-red-700 font-bold bg-red-100/50 p-1 -ml-1 rounded' : 'text-slate-700'}">
+                                                    <span class="w-1.5 h-1.5 bg-amber-800/50 rounded-full inline-block"></span> ${item}
+                                                </li>`).join('')}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>` : ''}
+
+                                ${state.cardState === 'scanner' ? `
+                                <div class="bg-slate-950 p-6 flex flex-col h-full items-center justify-center text-center relative border-t-4 border-cyan-900 shadow-inner">
+                                    <div class="relative w-40 h-64 border-2 border-slate-700 rounded-lg overflow-hidden bg-slate-950 flex flex-col items-center justify-center shadow-inner">
+                                        <svg viewBox="0 0 100 200" class="w-full h-full p-4 opacity-80 relative z-10 transition-colors duration-500 text-${state.scanStatus === 'clean' ? 'green-500' : state.scanStatus === 'contraband' ? 'red-600' : 'cyan-600/50'}">
+                                            <path d="M50 20 C60 20 65 30 65 40 C65 55 55 60 50 60 C45 60 35 55 35 40 C35 30 40 20 50 20 Z M25 70 C35 65 65 65 75 70 C85 75 90 90 90 110 L80 110 L80 85 C80 80 75 75 70 75 L30 75 C25 75 20 80 20 85 L20 110 L10 110 C10 90 15 75 25 70 Z M35 110 L65 110 L65 190 L55 190 L55 140 L45 140 L45 190 L35 190 Z" fill="currentColor"/>
+                                            ${state.scanStatus === 'contraband' ? '<circle cx="75" cy="90" r="12" fill="none" stroke="#ef4444" stroke-width="3" class="animate-ping" />' : ''}
+                                        </svg>
+                                        ${state.scanStatus === 'scanning' ? `<div class="absolute left-0 w-full h-1 bg-cyan-400 shadow-[0_0_15px_3px_#22d3ee] z-20" style="animation: scan ${1.5 - (state.upgrades.scannerLvl * 0.2)}s ease-in-out infinite"></div>` : ''}
+                                        <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none"></div>
+                                    </div>
+                                    <div class="mt-6 h-16 w-full flex items-center justify-center">
+                                        ${state.scanStatus === 'idle' ? `
+                                        <button onclick="handleScan()" class="py-3 px-6 bg-cyan-900/30 hover:bg-cyan-900/60 border border-cyan-700 text-cyan-400 font-bold rounded tracking-widest uppercase transition-colors flex items-center gap-2">
+                                            <i data-lucide="scan" class="w-[18px] h-[18px]"></i> Initiate Scan ${state.upgrades.scannerLvl > 0 ? '<i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i>' : ''}
+                                        </button>` : ''}
+                                        ${state.scanStatus === 'scanning' ? '<p class="text-cyan-500 font-bold tracking-widest animate-pulse">ANALYZING SUBJECT...</p>' : ''}
+                                        ${state.scanStatus === 'clean' ? '<p class="text-green-500 font-black tracking-widest border border-green-500/50 bg-green-500/10 py-2 px-4 rounded w-full">CLEAN</p>' : ''}
+                                        ${state.scanStatus === 'contraband' ? `
+                                        <div class="w-full">
+                                            <p class="text-red-500 font-black tracking-widest uppercase mb-1">CONTRABAND DETECTED</p>
+                                            <p class="text-red-300 text-sm border border-red-500/50 bg-red-500/10 py-1 rounded shadow-[0_0_10px_rgba(239,68,68,0.2)]">${state.currentNPC.hiddenItem}</p>
+                                        </div>` : ''}
+                                    </div>
+                                </div>` : ''}
+                            </div>
+                        </div>
+                        ` : ''}
+                    </main>
+
+                    <footer class="bg-slate-900 border-t border-slate-800 p-4 md:p-6 z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.6)] relative">
+                        <div class="max-w-2xl mx-auto flex flex-col gap-3">
+                            <div class="grid grid-cols-2 gap-4">
+                                <button ${state.animating || state.stamp || state.scanStatus === 'scanning' ? 'disabled' : ''} onclick="handleAction('allow')" class="py-4 bg-slate-800 hover:bg-slate-700 border-2 border-green-900/50 hover:border-green-500 rounded-xl text-white font-bold transition-all flex flex-col items-center justify-center gap-1 group disabled:opacity-50 disabled:cursor-not-allowed shadow-lg active:scale-95">
+                                    <i data-lucide="check" class="text-green-500 group-hover:scale-125 transition-transform duration-300 w-7 h-7"></i>
+                                    <span class="tracking-widest">ALLOW</span>
+                                </button>
+                                <button ${state.animating || state.stamp || state.scanStatus === 'scanning' ? 'disabled' : ''} onclick="handleAction('deny')" class="py-4 bg-slate-800 hover:bg-slate-700 border-2 border-red-900/50 hover:border-red-500 rounded-xl text-white font-bold transition-all flex flex-col items-center justify-center gap-1 group disabled:opacity-50 disabled:cursor-not-allowed shadow-lg active:scale-95">
+                                    <i data-lucide="x" class="text-red-500 group-hover:scale-125 transition-transform duration-300 w-7 h-7"></i>
+                                    <span class="tracking-widest">DENY</span>
+                                </button>
+                            </div>
+                            
+                            ${state.currentNPC?.isWanted && state.scanStatus !== 'contraband' ? `
+                            <div class="grid grid-cols-1 mt-1 pt-3 border-t border-slate-700 border-dashed">
+                                <button ${state.animating || state.stamp ? 'disabled' : ''} onclick="handleAction('detain_report')" class="py-3 bg-red-950/60 hover:bg-red-900/80 border border-red-700 rounded-lg text-red-400 font-bold transition-all flex items-center justify-center gap-3 disabled:opacity-50 active:scale-[0.98] uppercase tracking-wider shadow-[0_0_15px_rgba(220,38,38,0.3)] animate-pulse">
+                                    <i data-lucide="target" class="w-5 h-5"></i> DETAIN WANTED CRIMINAL (Claim Bounty)
+                                </button>
+                            </div>` : ''}
+
+                            ${state.scanStatus === 'contraband' && !state.currentNPC?.isWanted ? `
+                            <div class="grid grid-cols-2 gap-3 mt-1 pt-3 border-t border-slate-700 border-dashed">
+                                <button ${state.animating || state.stamp ? 'disabled' : ''} onclick="handleAction('detain_report')" class="py-3 bg-blue-950/40 hover:bg-blue-900/70 border border-blue-700 rounded-lg text-blue-400 font-bold transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-50 active:scale-[0.98] text-[10px] sm:text-xs uppercase tracking-wider">
+                                    <i data-lucide="gavel" class="w-[18px] h-[18px] mb-1"></i> Detain & Report <span class="text-slate-400 font-normal">(Safe, +Rank)</span>
+                                </button>
+                                <button ${state.animating || state.stamp ? 'disabled' : ''} onclick="handleAction('detain_confiscate')" class="py-3 rounded-lg font-bold transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-50 active:scale-[0.98] text-[10px] sm:text-xs uppercase tracking-wider relative overflow-hidden group ${state.currentNPC.isBomber ? 'bg-orange-950/60 border-orange-700 text-orange-400 animate-pulse' : 'bg-purple-950/40 hover:bg-purple-900/70 border-purple-700 text-purple-400'}">
+                                    <div class="absolute inset-0 transition-colors ${state.currentNPC.isBomber ? 'bg-orange-500/20' : 'bg-purple-500/10 group-hover:bg-purple-500/20'}"></div>
+                                    <div class="absolute top-0 right-0 bg-red-600 text-white text-[9px] px-1 font-black">GAMBLE</div>
+                                    <i data-lucide="${state.currentNPC.isBomber ? 'bomb' : 'scan'}" class="w-[18px] h-[18px] mb-1 relative z-10"></i>
+                                    <span class="relative z-10">Secretly Loot <span class="text-slate-400 font-normal">(? Comfort, Risk)</span></span>
+                                </button>
+                            </div>` : ''}
+
+                            ${state.scanStatus !== 'contraband' && !state.currentNPC?.isWanted && cBribeVal > 0 ? `
+                            <button ${state.animating || state.stamp || state.scanStatus === 'scanning' ? 'disabled' : ''} onclick="handleAction('bribe')" class="w-full py-3 border rounded-lg font-bold transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50 active:scale-[0.98] ${state.currentNPC.isVIP ? 'bg-amber-950/40 border-amber-500 text-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)] animate-pulse' : 'bg-green-950/30 hover:bg-green-900/60 border-green-800/50 hover:border-green-500 text-green-400'}">
+                                <i data-lucide="dollar-sign" class="w-[18px] h-[18px]"></i> Take Bribe (+${cBribeVal} CMF, Breaks Streak, -Rank)
+                            </button>` : ''}
+
+                            ${state.scanStatus !== 'contraband' && !state.currentNPC?.isWanted && state.directive?.type === 'ridiculous' ? `
+                            <button ${state.animating || state.stamp || state.scanStatus === 'scanning' ? 'disabled' : ''} onclick="handleAction('ridiculous')" class="w-full py-3 bg-amber-950/30 hover:bg-amber-900/60 border border-amber-800/50 hover:border-amber-500 rounded-lg text-amber-500 font-bold transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50 active:scale-[0.98]">
+                                <i data-lucide="alert-triangle" class="w-[18px] h-[18px]"></i> Demand: "${state.directive.ridiculousItem}" (Follow Protocol)
+                            </button>` : ''}
+                        </div>
+                    </footer>
+                </div>`;
+            }
+
+            root.innerHTML = html;
+            
+            // Re-initialize Lucide icons for the newly injected HTML
+            lucide.createIcons();
+        };
+
+        // Initialize App
+        render();
+
+    </script>
+</body>
+</html>
